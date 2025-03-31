@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
 
 interface Todo {
   project_id: number;
@@ -10,64 +11,49 @@ interface Todo {
 
 export default function TodoPage() {
   const [todos, setTodos] = useState<Todo[]>([]);
-  const [title, setTitle] = useState('');
-  const [detail, setDetail] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const { data: session } = useSession();
 
   useEffect(() => {
-    fetchTodos();
-  }, []);
+    if (!session?.user?.project_id) {
+      setError('ログインしてください');
+      return;
+    }
+    fetchTodos(session.user.project_id);
+  }, [session]);
 
-  async function fetchTodos() {
-    const response = await fetch('/api/todos');
-    const data = await response.json();
-    setTodos(data);
-  }
-
-  async function addTodo() {
-    await fetch('/api/todos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, detail })
-    });
-    setTitle('');
-    setDetail('');
-    fetchTodos();
-  }
-
-  async function toggleTodo(project_id: number, todo_id: number) {
-    await fetch(`/api/todos/${project_id}/${todo_id}`, {
-      method: 'PATCH'
-    });
-    fetchTodos();
-  }
-
-  async function deleteTodo(project_id: number, todo_id: number) {
-    await fetch(`/api/todos/${project_id}/${todo_id}`, {
-      method: 'DELETE'
-    });
-    fetchTodos();
+  async function fetchTodos(projectId: number) {
+    try {
+      const response = await fetch(`/api/todos?project_id=${projectId}`);
+      if (!response.ok) {
+        throw new Error('データの取得に失敗しました。');
+      }
+      const data = await response.json();
+      setTodos(data);
+    } catch (error) {
+      console.error('Error fetching todos:', error);
+      setError('データの取得に失敗しました。');
+    }
   }
 
   return (
     <div>
-      <h1>Todoアプリ</h1>
-      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="タイトル" />
-      <input value={detail} onChange={(e) => setDetail(e.target.value)} placeholder="詳細" />
-      <button onClick={addTodo}>追加</button>
-
-      <ul>
-        {todos.map((todo) => (
-          <li key={`${todo.project_id}-${todo.todo_id}`}>
-            <span style={{ textDecoration: todo.todo_completed ? 'line-through' : 'none' }}>
-              {todo.todo_title}: {todo.todo_detail}
-            </span>
-            <button onClick={() => toggleTodo(todo.project_id, todo.todo_id)}>
-              {todo.todo_completed ? '未完了にする' : '完了にする'}
-            </button>
-            <button onClick={() => deleteTodo(todo.project_id, todo.todo_id)}>削除</button>
-          </li>
-        ))}
-      </ul>
+      <h1>{session?.user?.name} の Todo 一覧</h1>
+      {error ? (
+        <p>{error}</p>
+      ) : todos.length === 0 ? (
+        <p>Todoはありません。</p>
+      ) : (
+        <ul>
+          {todos.map((todo) => (
+            <li key={`${todo.project_id}-${todo.todo_id}`}>
+              <span style={{ textDecoration: todo.todo_completed ? 'line-through' : 'none' }}>
+                {todo.todo_title}: {todo.todo_detail}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
